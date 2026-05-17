@@ -1,10 +1,345 @@
-﻿<!DOCTYPE html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <title></title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Browser</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; font-size: 14px; color: #222; padding: 1rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 1.2rem; margin-bottom: 0.5rem; }
+        .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; align-items: center; }
+        .toolbar input[type="text"] { padding: 0.3rem 0.5rem; flex: 1; min-width: 120px; }
+        .toolbar button, .upload-btn { padding: 0.3rem 0.7rem; cursor: pointer; }
+        .breadcrumb { margin-bottom: 0.5rem; font-size: 0.85rem; }
+        .breadcrumb a { color: #06c; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .stats { font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #eee; }
+        th { background: #f5f5f5; position: sticky; top: 0; font-size: 0.8rem; text-transform: uppercase; color: #555; }
+        tr:hover { background: #f9f9f9; }
+        td.name a { color: #06c; text-decoration: none; }
+        td.name a:hover { text-decoration: underline; }
+        td.actions { white-space: nowrap; }
+        td.actions button { margin-right: 0.25rem; font-size: 0.75rem; cursor: pointer; }
+        td.size { text-align: right; font-variant-numeric: tabular-nums; }
+        .empty { padding: 2rem; text-align: center; color: #999; }
+        .error { padding: 1rem; color: #c00; background: #fff0f0; border: 1px solid #fcc; margin-bottom: 0.5rem; }
+        #file-input { display: none; }
+    </style>
 </head>
 <body>
-    Hello World!
+    <h1>File Browser</h1>
+    <div class="toolbar">
+        <input type="text" id="search-input" placeholder="Search pattern (e.g. *.txt)">
+        <button id="search-btn">Search</button>
+        <button id="clear-btn">Clear</button>
+        <label class="upload-btn"><input type="file" id="file-input" multiple>Upload</label>
+    </div>
+    <nav class="breadcrumb" id="breadcrumb"></nav>
+    <div class="stats" id="stats"></div>
+    <div id="error"></div>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th style="text-align:right">Size</th>
+                <th>Modified</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="file-list"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>No files or folders here.</div>
+
+<script>
+(function() {
+    'use strict';
+
+    // -- State --
+    const BATCH_SIZE = 50;
+    const state = { path: '', entries: [], searchMode: false, searchPattern: '' };
+
+    // -- DOM refs --
+    const $list = document.getElementById('file-list');
+    const $breadcrumb = document.getElementById('breadcrumb');
+    const $stats = document.getElementById('stats');
+    const $error = document.getElementById('error');
+    const $empty = document.getElementById('empty');
+    const $searchInput = document.getElementById('search-input');
+    const $fileInput = document.getElementById('file-input');
+
+    // -- URL / Routing --
+    function currentPathFromHash() {
+        const hash = location.hash.slice(1); // remove #
+        const params = new URLSearchParams(hash);
+        return { path: params.get('path') || '/', search: params.get('search') || '' };
+    }
+
+    function setHash(path, search) {
+        const params = new URLSearchParams();
+        params.set('path', path || '/');
+        if (search) params.set('search', search);
+        location.hash = params.toString();
+    }
+
+    function navigate(path) {
+        setHash(path, '');
+    }
+
+    // -- API --
+    async function apiFetch(url, options) {
+        try {
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+            }
+            return res;
+        } catch (err) {
+            showError(err.message);
+            throw err;
+        }
+    }
+
+    async function browse(path) {
+        const res = await apiFetch(`/Files?path=${encodeURIComponent(path)}`);
+        return await res.json();
+    }
+
+    async function search(path, pattern) {
+        const res = await apiFetch(`/Files/search?path=${encodeURIComponent(path)}&pattern=${encodeURIComponent(pattern)}`);
+        return await res.json();
+    }
+
+    async function deleteEntry(path) {
+        await apiFetch('/Files', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+    }
+
+    async function moveEntry(sourcePath, destinationPath) {
+        await apiFetch('/Files/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourcePath, destinationPath })
+        });
+    }
+
+    async function uploadFiles(targetDirectory, files) {
+        for (const file of files) {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('targetDirectory', targetDirectory);
+            await apiFetch('/Files/upload', { method: 'POST', body: form });
+        }
+    }
+
+    // -- Rendering --
+    function showError(msg) {
+        $error.textContent = msg;
+        $error.className = 'error';
+        setTimeout(() => { $error.textContent = ''; $error.className = ''; }, 5000);
+    }
+
+    function renderBreadcrumb(path) {
+        const parts = path.split('/').filter(Boolean);
+        let html = '<a href="#path=/">root</a>';
+        let accumulated = '';
+        for (const part of parts) {
+            accumulated += (accumulated ? '/' : '') + part;
+            html += ` / <a href="#path=${encodeURIComponent(accumulated)}">${escapeHtml(part)}</a>`;
+        }
+        $breadcrumb.innerHTML = html;
+    }
+
+    function renderStats(data) {
+        $stats.textContent = `${data.foldersCount} folder(s), ${data.filesCount} file(s)`;
+    }
+
+    function renderEntries(entries) {
+        $list.innerHTML = '';
+        $empty.hidden = entries.length > 0;
+        if (entries.length === 0) return;
+
+        // Batch rendering: render BATCH_SIZE at a time using requestAnimationFrame
+        let index = 0;
+        function renderBatch() {
+            const fragment = document.createDocumentFragment();
+            const end = Math.min(index + BATCH_SIZE, entries.length);
+            for (; index < end; index++) {
+                fragment.appendChild(createRow(entries[index]));
+            }
+            $list.appendChild(fragment);
+            if (index < entries.length) {
+                requestAnimationFrame(renderBatch);
+            }
+        }
+        renderBatch();
+    }
+
+    function createRow(entry) {
+        const tr = document.createElement('tr');
+        const isFolder = entry.type === 2; // EntryType.Folder = 2
+        const displayName = getDisplayName(entry.name);
+
+        // Name
+        const tdName = document.createElement('td');
+        tdName.className = 'name';
+        if (isFolder) {
+            const a = document.createElement('a');
+            a.href = `#path=${encodeURIComponent(entry.name)}`;
+            a.textContent = displayName;
+            tdName.appendChild(a);
+        } else {
+            const a = document.createElement('a');
+            a.href = `/Files?path=${encodeURIComponent(entry.name)}`;
+            a.textContent = displayName;
+            tdName.appendChild(a);
+        }
+        tr.appendChild(tdName);
+
+        // Type
+        const tdType = document.createElement('td');
+        tdType.textContent = isFolder ? 'Folder' : 'File';
+        tr.appendChild(tdType);
+
+        // Size
+        const tdSize = document.createElement('td');
+        tdSize.className = 'size';
+        tdSize.textContent = isFolder ? '--' : formatSize(entry.size);
+        tr.appendChild(tdSize);
+
+        // Modified
+        const tdMod = document.createElement('td');
+        tdMod.textContent = formatDate(entry.modifiedDate);
+        tr.appendChild(tdMod);
+
+        // Actions
+        const tdActions = document.createElement('td');
+        tdActions.className = 'actions';
+
+        const btnDel = document.createElement('button');
+        btnDel.textContent = 'Delete';
+        btnDel.onclick = () => confirmDelete(entry.name);
+        tdActions.appendChild(btnDel);
+
+        const btnMove = document.createElement('button');
+        btnMove.textContent = 'Move';
+        btnMove.onclick = () => promptMove(entry.name);
+        tdActions.appendChild(btnMove);
+
+        tr.appendChild(tdActions);
+        return tr;
+    }
+
+    function getDisplayName(fullName) {
+        const parts = fullName.split('/');
+        return parts[parts.length - 1];
+    }
+
+    function formatSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+        const val = bytes / Math.pow(1024, i);
+        return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    function formatDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(str) {
+        const el = document.createElement('span');
+        el.textContent = str;
+        return el.innerHTML;
+    }
+
+    // -- Actions --
+    async function confirmDelete(path) {
+        if (!confirm(`Delete "${getDisplayName(path)}"?`)) return;
+        try {
+            await deleteEntry(path);
+            await load();
+        } catch (_) { /* error already shown */ }
+    }
+
+    async function promptMove(sourcePath) {
+        const dest = prompt(`Move "${getDisplayName(sourcePath)}" to:`, state.path || '/');
+        if (dest === null) return;
+        try {
+            await moveEntry(sourcePath, dest);
+            await load();
+        } catch (_) { /* error already shown */ }
+    }
+
+    // -- Main load --
+    async function load() {
+        const { path, search: searchPattern } = currentPathFromHash();
+        state.path = path;
+        state.searchPattern = searchPattern;
+        state.searchMode = !!searchPattern;
+        $searchInput.value = searchPattern;
+
+        renderBreadcrumb(path);
+
+        try {
+            let data;
+            if (state.searchMode) {
+                data = await search(path, searchPattern);
+            } else {
+                data = await browse(path);
+            }
+            state.entries = data.entries || [];
+            renderStats(data);
+            renderEntries(state.entries);
+        } catch (_) {
+            $list.innerHTML = '';
+            $empty.hidden = false;
+        }
+    }
+
+    // -- Event handlers --
+    window.addEventListener('hashchange', load);
+
+    document.getElementById('search-btn').addEventListener('click', () => {
+        const pattern = $searchInput.value.trim();
+        if (pattern) setHash(state.path, pattern);
+    });
+
+    document.getElementById('clear-btn').addEventListener('click', () => {
+        $searchInput.value = '';
+        navigate(state.path);
+    });
+
+    $searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const pattern = $searchInput.value.trim();
+            if (pattern) setHash(state.path, pattern);
+        }
+    });
+
+    $fileInput.addEventListener('change', async () => {
+        const files = $fileInput.files;
+        if (!files.length) return;
+        try {
+            await uploadFiles(state.path || '/', files);
+            $fileInput.value = '';
+            await load();
+        } catch (_) { /* error already shown */ }
+    });
+
+    // -- Init --
+    if (!location.hash) location.hash = 'path=/';
+    load();
+})();
+</script>
 </body>
 </html>
