@@ -7,4 +7,9 @@ public enum EntryType
     Folder
 }
 
-public readonly record struct Entry(PathLocation Location, EntryType Type, long SizeBytes, DateTimeOffset CreatedDate, DateTimeOffset ModifiedDate);
+public readonly record struct Entry(
+    PathLocation Location,
+    EntryType Type,
+    long SizeBytes,
+    DateTimeOffset CreatedDate,
+    DateTimeOffset ModifiedDate);

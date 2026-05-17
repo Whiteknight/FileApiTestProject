@@ -1,5 +1,7 @@
 ﻿namespace TestProject.Api.Files;
 
+using static TestProject.Api.Assert;
+
 // Deleted=false means there was nothing to delete. Deleted=true means we deleted the thing.
 public readonly record struct DeleteResult(PathLocation Location, bool Deleted);
 
@@ -10,8 +12,8 @@ public sealed class DeletePath
 
     public DeletePath(ILogger<DeletePath> logger, FolderConfiguration config)
     {
-        _logger = logger;
-        _config = config;
+        _logger = NotNull(logger);
+        _config = NotNull(config);
     }
 
     public Result<DeleteResult> Delete(string path)

@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Net.Http.Headers;
-using TestProject.Api;
 using TestProject.Api.Contracts;
 using TestProject.Api.Files;
+using TestProject.Api.Mapping;
 using static TestProject.Api.Assert;
 
-namespace TestProject.Controllers;
+namespace TestProject.Api.Controllers;
 
 [ApiController]
 [Route("[controller]")]
@@ -63,6 +62,16 @@ public class FilesController : ControllerBase
                 _ => Ok(),
                 err => err.MapToHttpResponse());
 
+    /* Note: Uploads
+     * 
+     * I opted for a non-streaming upload, which is significantly simpler to implement and doesn't
+     * require quite so much abstraction-breaking with the domain layer. ASP.NET will buffer the
+     * full file contents in memory, which for larger files is going to be a problem. If we want
+     * larger files, we need to rewrite this to use streaming instead.
+     * 
+     * I also have not explicitly set payload length limits. The default limits will be used.
+     */
+
     [HttpPost("upload")]
     public async Task<IActionResult> UploadFile(
         [FromServices] UploadFile upload,
@@ -89,98 +98,4 @@ public class FilesController : ControllerBase
         else
             _logger.LogError("Error with user request {Error}", error.Message);
     }
-}
-
-public static class ResponseMapping
-{
-    public static FileStreamResult MapToFileDownload(this FileContents file)
-        => new FileStreamResult(file.Stream, file.ContentType)
-        {
-            FileDownloadName = file.GetDownloadName(),
-            LastModified = file.ModifyDate,
-            EntityTag = new EntityTagHeaderValue($"\"{file.CreateUniqueTag}\""),
-            EnableRangeProcessing = true
-        };
-
-    public static IActionResult MapToHttpResponse(this Error error)
-        => error switch
-        {
-            NothingToDo => new NoContentResult(),
-            PathIsInvalid => new BadRequestResult(),
-            LocationDoesNotExist => new NotFoundResult(),
-
-            // 403 Forbidden is a bit weird in an unauthenticated API, but it makes sense when the user is attempting
-            // to craft a request which is outside our bounds, which feels malicious.
-            // Make clear: We see what you're attempting, stop it.
-            // Note: We use StatusCodeResult instead of ForbidResult because ForbidResult requires an authentication scheme.
-            LocationIsOutsideTheRootFolder => new StatusCodeResult(StatusCodes.Status403Forbidden),
-
-            // Permissions with respect to the server principal. If the server cannot read the file, that implies something at the system level,
-            // not something with the API user, which means we can treat the file as if it does not exist. We don't want to throw a 403 Forbidden
-            // and give away the fact that certain system files might exist.
-            LocationCannotBeRead => new NotFoundResult(),
-
-            WriteConflict => new ConflictResult(),
-
-            // For other cases not explicitly mapped, return a 500 and hope we get enough info in logging to fix.
-            null => new ObjectResult(new ProblemDetails
-            {
-                Detail = "Unknown internal server error",
-                Status = 500,
-                Title = "Unknown internal server error"
-            }),
-            _ => new ObjectResult(new ProblemDetails
-            {
-                Detail = error.Message,
-                Status = 500,
-                Title = "Unknown internal server error"
-            })
-        };
-}
-
-public static class ContentsMapper
-{
-    public static ContentEntriesResponse Map(Contents contents)
-        => contents switch
-        {
-            SearchContents sc => MapSearchContents(sc),
-            DirectoryContents dc => MapDirectoryContents(dc),
-            _ => new ContentEntriesResponse
-            {
-                Name = string.Empty,
-                Entries = []
-            }
-        };
-
-    private static ContentEntry MapEntry(Entry entry)
-        => new ContentEntry
-        {
-            Name = entry.Location.Name,
-            Size = entry.SizeBytes,
-            CreateDate = entry.CreatedDate,
-            ModifiedDate = entry.ModifiedDate,
-            Type = entry.Type
-        };
-
-    private static ContentEntriesResponse MapSearchContents(SearchContents searchResults)
-        => new ContentEntriesResponse
-        {
-            Name = searchResults.Location.Name,
-            Entries = searchResults.Entries
-                .Select(MapEntry)
-                .ToList(),
-            FilesCount = searchResults.Entries.Count(e => e.Type == EntryType.File),
-            FoldersCount = searchResults.Entries.Count(e => e.Type == EntryType.Folder)
-        };
-
-    private static ContentEntriesResponse MapDirectoryContents(DirectoryContents directory)
-        => new ContentEntriesResponse
-        {
-            Name = directory.Location.Name,
-            Entries = directory.Entries
-                .Select(MapEntry)
-                .ToList(),
-            FilesCount = directory.Entries.Count(e => e.Type == EntryType.File),
-            FoldersCount = directory.Entries.Count(e => e.Type == EntryType.Folder)
-        };
 }

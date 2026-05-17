@@ -78,13 +78,18 @@
         return { path: params.get('path') || '/', search: params.get('search') || '' };
     }
 
+    // Set the path string into the nav bar so we can see where we are.
     function setHash(path, search) {
         const params = new URLSearchParams();
         params.set('path', path || '/');
-        if (search) params.set('search', search);
+        if (search)
+            params.set('search', search);
         location.hash = params.toString();
     }
 
+    // Note: For simplicity I opted against .pushState()/.popState() handling in favor of
+    // breadcrumb navigation at the top. Being able to use the browser's back and forward buttons
+    // is more idiomatic but feels unnecessary here.
     function navigate(path) {
         setHash(path, '');
     }
@@ -140,6 +145,10 @@
     }
 
     // -- Rendering --
+
+    // Simulate a toast-style popup. Show the error message and then auto-close it after a few
+    // seconds. This saves us the effort of having to have a close button or risk cluttering the
+    // ui with an ever-growing list of issues.
     function showError(msg) {
         $error.textContent = msg;
         $error.className = 'error';
@@ -147,6 +156,7 @@
     }
 
     function renderBreadcrumb(path) {
+        // Break up the path and filter out any parts that are empty/falsey
         const parts = path.split('/').filter(Boolean);
         let html = '<a href="#path=/">root</a>';
         let accumulated = '';
@@ -164,9 +174,12 @@
     function renderEntries(entries) {
         $list.innerHTML = '';
         $empty.hidden = entries.length > 0;
-        if (entries.length === 0) return;
+        if (entries.length === 0)
+            return;
 
         // Batch rendering: render BATCH_SIZE at a time using requestAnimationFrame
+        // For very large directory listings, batching our DOM updates can help make the site
+        // a bit more fluid.
         let index = 0;
         function renderBatch() {
             const fragment = document.createDocumentFragment();
@@ -243,7 +256,8 @@
     }
 
     function formatSize(bytes) {
-        if (bytes === 0) return '0 B';
+        if (bytes === 0)
+            return '0 B';
         const units = ['B', 'KB', 'MB', 'GB'];
         const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
         const val = bytes / Math.pow(1024, i);
@@ -251,7 +265,8 @@
     }
 
     function formatDate(iso) {
-        if (!iso) return '';
+        if (!iso)
+            return '';
         const d = new Date(iso);
         return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
@@ -264,7 +279,8 @@
 
     // -- Actions --
     async function confirmDelete(path) {
-        if (!confirm(`Delete "${getDisplayName(path)}"?`)) return;
+        if (!confirm(`Delete "${getDisplayName(path)}"?`))
+            return;
         try {
             await deleteEntry(path);
             await load();
@@ -273,7 +289,8 @@
 
     async function promptMove(sourcePath) {
         const dest = prompt(`Move "${getDisplayName(sourcePath)}" to:`, state.path || '/');
-        if (dest === null) return;
+        if (dest === null)
+            return;
         try {
             await moveEntry(sourcePath, dest);
             await load();
@@ -311,7 +328,8 @@
 
     document.getElementById('search-btn').addEventListener('click', () => {
         const pattern = $searchInput.value.trim();
-        if (pattern) setHash(state.path, pattern);
+        if (pattern)
+            setHash(state.path, pattern);
     });
 
     document.getElementById('clear-btn').addEventListener('click', () => {
@@ -322,13 +340,15 @@
     $searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             const pattern = $searchInput.value.trim();
-            if (pattern) setHash(state.path, pattern);
+            if (pattern)
+                setHash(state.path, pattern);
         }
     });
 
     $fileInput.addEventListener('change', async () => {
         const files = $fileInput.files;
-        if (!files.length) return;
+        if (!files.length)
+            return;
         try {
             await uploadFiles(state.path || '/', files);
             $fileInput.value = '';
@@ -337,7 +357,8 @@
     });
 
     // -- Init --
-    if (!location.hash) location.hash = 'path=/';
+    if (!location.hash)
+        location.hash = 'path=/';
     load();
 })();
 </script>

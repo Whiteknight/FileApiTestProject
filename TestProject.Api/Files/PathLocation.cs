@@ -19,9 +19,9 @@ public readonly record struct PathLocation(DirectoryInfo Root, string FullPath, 
         return new PathLocation(root, info.FullName, canonical, true, type, hidden);
     }
 
-    // Surface-level sanitation on the input path, rejecting invalid characters, rejecting paths which are too long,
-    // canonicalize it to use '/' for the Name but platform-specific separators for paths, and returning
-    // a PathLocation object ready to use.
+    // Surface-level sanitation on the input path, rejecting invalid characters, rejecting paths
+    // which are too long, canonicalize it to use '/' for the Name but platform-specific separators
+    // for paths, and returning a PathLocation object ready to use.
     public static Result<PathLocation> SanitizeAndCanonicalize(DirectoryInfo rootDirectory, string path)
     {
         if (string.IsNullOrEmpty(path) || path == "/")
@@ -44,7 +44,7 @@ public readonly record struct PathLocation(DirectoryInfo Root, string FullPath, 
         return new PathLocation(rootDirectory, fullPath, canonical, false, EntryType.Unknown, false);
     }
 
-    // Structural validation. Makes sure that the given path is located within the root directory only.
+    // Structural validation. Makes sure that the given path is within the root directory only.
     public Result<PathLocation> Validate()
     {
         var fullChild = Path.GetFullPath(FullPath);
@@ -68,8 +68,8 @@ public readonly record struct PathLocation(DirectoryInfo Root, string FullPath, 
 
     public PathLocation Append(string name)
     {
-        // Append operation doesn't really make sense if the path is a file, but for now we can put an assert here
-        // and just check callsites to make sure we only do this for directories.
+        // Append operation doesn't really make sense if the path is a file, but for now we can put
+        // an assert here and just check callsites to make sure we only do this for directories.
         Debug.Assert(Type == EntryType.Folder);
         if (string.IsNullOrEmpty(name))
             return this;

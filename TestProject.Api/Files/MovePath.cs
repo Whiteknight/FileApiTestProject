@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using static TestProject.Api.Assert;
 
 namespace TestProject.Api.Files;
 
@@ -9,8 +10,8 @@ public sealed class MovePath
 
     public MovePath(ILogger<MovePath> logger, FolderConfiguration config)
     {
-        _logger = logger;
-        _config = config;
+        _logger = NotNull(logger);
+        _config = NotNull(config);
     }
 
     public Result<bool> Move(string sourcePath, string targetPath)
@@ -31,7 +32,7 @@ public sealed class MovePath
         return Move(src, dest);
     }
 
-    private Result<bool> Move(PathLocation src, PathLocation dest)
+    private static Result<bool> Move(PathLocation src, PathLocation dest)
     {
         if (src.IsSameLocationAs(dest))
             return new NothingToDo();
@@ -45,7 +46,7 @@ public sealed class MovePath
         };
     }
 
-    private Result<bool> MoveIntoExistingFolder(PathLocation src, PathLocation dest)
+    private static Result<bool> MoveIntoExistingFolder(PathLocation src, PathLocation dest)
     {
         Debug.Assert(dest.Type == EntryType.Folder);
         try
@@ -68,7 +69,7 @@ public sealed class MovePath
         }
     }
 
-    private Result<bool> MoveDirectly(PathLocation src, PathLocation dest)
+    private static Result<bool> MoveDirectly(PathLocation src, PathLocation dest)
     {
         // It is entirely possible that the dest points to a nested folder location which does not exist
         // We are going to lean on the system file operations to detect that case.

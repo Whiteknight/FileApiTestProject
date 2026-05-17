@@ -38,7 +38,7 @@ A small amount of CSS is added for basic usability.
 
 ### Obvious Omissions
 
-The task description explicitly said to avoid boilerplate and drive towards simplicity. Scripts and features that I normally would have included were intentionally omitted: Dockerfile and docker-compose.yml, .env, documentation, etc. 
+The task description explicitly said to avoid boilerplate and drive towards simplicity. Scripts and features that I normally would have included were intentionally omitted: Dockerfile and docker-compose.yml, .env, documentation, AGENTS.md, ARCHITECTURE.md, CI/CD pipeline definitions, deployment scripts, etc.
 
 I have likewise avoided a lot of setup ceremony and security that otherwise would be required: authentication and authorization, CORS, logging and telemetry, response caching. I do not like giving unauthenticated access to the local filesystem, but that's what has been asked of me. I make a note here that I am aware that this is a BAD IDEA. 
 
