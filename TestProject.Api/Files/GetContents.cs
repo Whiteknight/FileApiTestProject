@@ -7,6 +7,15 @@ namespace TestProject.Api.Files;
 
 public sealed class GetContents
 {
+    /* Note: Hidden files
+     * 
+     * On Windows files are marked as hidden or not using metadata. It would be expected that a
+     * file like .env or .git would be visible as part of normal directory traversal. However
+     * on Linux there is no concept of a hidden file attribute and it would be expected to not
+     * Show these files. For the sake of argument, I have followed the Windows Conventions in this
+     * API. Files marked as Hidden or System files will not be shown, but dot files will be.
+     */
+
     private readonly ILogger<GetContents> _logger;
     private readonly FolderConfiguration _config;
     private readonly FileExtensionContentTypeProvider _mimeTypes;
@@ -33,9 +42,21 @@ public sealed class GetContents
             .Then(x => MapSearchResultsToContents(x.Location, x.Results))
             .OnSuccess(contents => _logger.LogInformation("Search attempt at {Path} with '{Pattern}' success", contents.Location.FullPath, request.Pattern));
 
-    private Result<(PathLocation Location, FileSystemInfo[] Results)> GetFilePaths(PathLocation path, string requestPattern, int pageSize)
+    private static string GetGlobPattern(string pattern)
     {
-        var pattern = string.IsNullOrWhiteSpace(requestPattern) ? "*" : requestPattern;
+        if (string.IsNullOrWhiteSpace(pattern))
+            return "*";
+        if (pattern.Contains('*') || pattern.Contains('?'))
+            return pattern;
+        return $"*{pattern}*";
+    }
+
+    private static Result<(PathLocation Location, FileSystemInfo[] Results)> GetFilePaths(PathLocation path, string requestPattern, int pageSize)
+    {
+        if (!path.Exists)
+            return new LocationDoesNotExist(path);
+
+        var pattern = GetGlobPattern(requestPattern);
         try
         {
             var results = path.GetDirectoryInfo()

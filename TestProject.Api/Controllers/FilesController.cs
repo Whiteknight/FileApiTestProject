@@ -112,7 +112,8 @@ public static class ResponseMapping
             // 403 Forbidden is a bit weird in an unauthenticated API, but it makes sense when the user is attempting
             // to craft a request which is outside our bounds, which feels malicious.
             // Make clear: We see what you're attempting, stop it.
-            LocationIsOutsideTheRootFolder => new ForbidResult(),
+            // Note: We use StatusCodeResult instead of ForbidResult because ForbidResult requires an authentication scheme.
+            LocationIsOutsideTheRootFolder => new StatusCodeResult(StatusCodes.Status403Forbidden),
 
             // Permissions with respect to the server principal. If the server cannot read the file, that implies something at the system level,
             // not something with the API user, which means we can treat the file as if it does not exist. We don't want to throw a 403 Forbidden

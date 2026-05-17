@@ -31,7 +31,7 @@ public class Program
     private static void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<FileExtensionContentTypeProvider>();
-        services.AddSingleton(ConfigFromEnvironmentVariables());
+        services.AddSingleton(_ => ConfigFromEnvironmentVariables());
         services.AddSingleton<DeletePath>();
         services.AddSingleton<GetContents>();
         services.AddSingleton<MovePath>();
