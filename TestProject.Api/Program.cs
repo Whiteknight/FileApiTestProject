@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.StaticFiles;
 using TestProject.Api;
+using TestProject.Api.Files;
 
 namespace TestProject;
 
@@ -9,8 +11,8 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         // Add services to the container.
+        ConfigureServices(builder.Services);
 
-        builder.Services.AddSingleton(ConfigFromEnvironmentVariables());
         builder.Services.AddControllers();
 
         var app = builder.Build();
@@ -24,6 +26,16 @@ public class Program
         app.MapControllers();
 
         app.Run();
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<FileExtensionContentTypeProvider>();
+        services.AddSingleton(ConfigFromEnvironmentVariables());
+        services.AddSingleton<DeletePath>();
+        services.AddSingleton<GetContents>();
+        services.AddSingleton<MovePath>();
+        services.AddSingleton<UploadFile>();
     }
 
     private static FolderConfiguration ConfigFromEnvironmentVariables()
